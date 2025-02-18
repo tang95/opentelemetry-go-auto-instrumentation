@@ -97,6 +97,8 @@ var fixedDeps = []struct {
 	// otel contrib
 	{"go.opentelemetry.io/contrib/instrumentation/runtime",
 		"v0.58.0", false, false},
+	{"go.opentelemetry.io/contrib/samplers/jaegerremote",
+		"v0.27.0", false, false},
 }
 
 type DepProcessor struct {

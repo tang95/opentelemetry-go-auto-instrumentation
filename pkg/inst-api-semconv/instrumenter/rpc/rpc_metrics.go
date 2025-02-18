@@ -18,13 +18,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"sync"
+	"time"
+
 	"github.com/alibaba/opentelemetry-go-auto-instrumentation/pkg/inst-api-semconv/instrumenter/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
-	"log"
-	"sync"
-	"time"
 )
 
 const rpc_server_request_duration = "rpc.server.duration"
@@ -125,6 +126,9 @@ func (h *RpcServerMetric) OnAfterStart(context context.Context, endTime time.Tim
 }
 
 func (h *RpcServerMetric) OnAfterEnd(context context.Context, endAttributes []attribute.KeyValue, endTime time.Time) {
+	if context.Value(h.key) == nil {
+		return
+	}
 	mc := context.Value(h.key).(rpcMetricContext)
 	startTime, startAttributes := mc.startTime, mc.startAttributes
 	// end attributes should be shadowed by AttrsShadower

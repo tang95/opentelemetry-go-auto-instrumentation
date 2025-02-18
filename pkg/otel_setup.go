@@ -22,6 +22,7 @@ import (
 	"github.com/alibaba/opentelemetry-go-auto-instrumentation/pkg/inst-api-semconv/instrumenter/experimental"
 	"github.com/alibaba/opentelemetry-go-auto-instrumentation/pkg/inst-api-semconv/instrumenter/rpc"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/samplers/jaegerremote"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"log"
 	http2 "net/http"
@@ -56,6 +57,8 @@ const trace_report_protocol = "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"
 const metrics_exporter = "OTEL_METRICS_EXPORTER"
 const prometheus_exporter_port = "OTEL_EXPORTER_PROMETHEUS_PORT"
 const default_prometheus_exporter_port = "9464"
+const serviceNameKey = "OTEL_SERVICE_NAME"
+const jaeger_remote_sampler = "OTEL_TRACES_JAEGER_SAMPLER"
 
 func init() {
 	path, err := os.Executable()
@@ -96,19 +99,43 @@ func newSpanProcessor(ctx context.Context) trace.SpanProcessor {
 	}
 }
 
+func newJaegerRemoteSampler() trace.Sampler {
+	sampler, ok := os.LookupEnv(jaeger_remote_sampler)
+	if !ok {
+		return nil
+	}
+	serviceName, ok := os.LookupEnv(serviceNameKey)
+	if !ok {
+		return nil
+	}
+	sampler = strings.ToLower(strings.TrimSpace(sampler))
+	switch sampler {
+	case "parentbased":
+		return trace.ParentBased(jaegerremote.New(serviceName))
+	case "based":
+		return jaegerremote.New(serviceName)
+	default:
+		return nil
+	}
+}
+
 func initOpenTelemetry() error {
 	ctx := context.Background()
 
 	var batchSpanProcessor trace.SpanProcessor
 
 	batchSpanProcessor = newSpanProcessor(ctx)
+	sampler := newJaegerRemoteSampler()
 
 	var traceProvider *trace.TracerProvider
 	if batchSpanProcessor != nil {
 		traceProvider = trace.NewTracerProvider(
+			trace.WithSampler(sampler),
 			trace.WithSpanProcessor(batchSpanProcessor))
 	} else {
-		traceProvider = trace.NewTracerProvider()
+		traceProvider = trace.NewTracerProvider(
+			trace.WithSampler(sampler),
+		)
 	}
 
 	otel.SetTracerProvider(traceProvider)

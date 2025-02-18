@@ -15,8 +15,6 @@
 package trace
 
 import (
-	"fmt"
-
 	trace "go.opentelemetry.io/otel/trace"
 )
 
@@ -137,7 +135,7 @@ func setTraceContext(tc *traceContext) {
 func traceContextAddSpan(span trace.Span) {
 	tc := getOrInitTraceContext()
 	if !tc.add(span) {
-		fmt.Println("Failed to add span to TraceContext")
+		//fmt.Println("Failed to add span to TraceContext")
 	}
 }
 

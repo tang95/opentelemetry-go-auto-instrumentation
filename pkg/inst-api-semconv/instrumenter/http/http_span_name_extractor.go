@@ -20,10 +20,15 @@ type HttpClientSpanNameExtractor[REQUEST any, RESPONSE any] struct {
 
 func (h *HttpClientSpanNameExtractor[REQUEST, RESPONSE]) Extract(request REQUEST) string {
 	method := h.Getter.GetRequestMethod(request)
-	if method == "" {
-		return "HTTP"
+	serverAddress := h.Getter.GetServerAddress(request)
+	name := "HTTP"
+	if method != "" {
+		name = method
 	}
-	return method
+	if serverAddress != "" {
+		name += " " + serverAddress
+	}
+	return name
 }
 
 type HttpServerSpanNameExtractor[REQUEST any, RESPONSE any] struct {
