@@ -395,7 +395,7 @@
     "Path": "github.com/alibaba/opentelemetry-go-auto-instrumentation/pkg/rules/http"
   },
   {
-    "Version": "[3.0.0,3.49.1)",
+    "Version": "[3.0.0,)",
     "ImportPath": "github.com/imroc/req/v3",
     "Function": "RoundTrip",
     "ReceiverType": "*Transport",
