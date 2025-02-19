@@ -1,0 +1,135 @@
+// Copyright (c) 2024 Alibaba Group Holding Ltd.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package http
+
+import (
+	"strconv"
+
+	"github.com/alibaba/opentelemetry-go-auto-instrumentation/pkg/inst-api/utils"
+	"github.com/alibaba/opentelemetry-go-auto-instrumentation/pkg/inst-api/version"
+	"go.opentelemetry.io/otel/sdk/instrumentation"
+
+	"github.com/alibaba/opentelemetry-go-auto-instrumentation/pkg/inst-api-semconv/instrumenter/http"
+	"github.com/alibaba/opentelemetry-go-auto-instrumentation/pkg/inst-api-semconv/instrumenter/net"
+	"github.com/alibaba/opentelemetry-go-auto-instrumentation/pkg/inst-api/instrumenter"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+)
+
+type netHttpClientAttrsGetter struct {
+}
+
+func (n netHttpClientAttrsGetter) GetRequestMethod(request *netHttpRequest) string {
+	return request.method
+}
+
+func (n netHttpClientAttrsGetter) GetHttpRequestHeader(request *netHttpRequest, name string) []string {
+	return request.header.Values(name)
+}
+
+func (n netHttpClientAttrsGetter) GetHttpResponseStatusCode(request *netHttpRequest, response *netHttpResponse, err error) int {
+	return response.statusCode
+}
+
+func (n netHttpClientAttrsGetter) GetHttpResponseHeader(request *netHttpRequest, response *netHttpResponse, name string) []string {
+	return response.header.Values(name)
+}
+
+func (n netHttpClientAttrsGetter) GetErrorType(request *netHttpRequest, response *netHttpResponse, err error) string {
+	// TODO return status code as error type
+	return ""
+}
+
+func (n netHttpClientAttrsGetter) GetNetworkType(request *netHttpRequest, response *netHttpResponse) string {
+	return "ipv4"
+}
+
+func (n netHttpClientAttrsGetter) GetNetworkTransport(request *netHttpRequest, response *netHttpResponse) string {
+	return "tcp"
+}
+
+func (n netHttpClientAttrsGetter) GetNetworkProtocolName(request *netHttpRequest, response *netHttpResponse) string {
+	if request.isTls == false {
+		return "http"
+	} else {
+		return "https"
+	}
+}
+
+func (n netHttpClientAttrsGetter) GetNetworkProtocolVersion(request *netHttpRequest, response *netHttpResponse) string {
+	return request.version
+}
+
+func (n netHttpClientAttrsGetter) GetNetworkLocalInetAddress(request *netHttpRequest, response *netHttpResponse) string {
+	return ""
+}
+
+func (n netHttpClientAttrsGetter) GetNetworkLocalPort(request *netHttpRequest, response *netHttpResponse) int {
+	return 0
+}
+
+func (n netHttpClientAttrsGetter) GetNetworkPeerInetAddress(request *netHttpRequest, response *netHttpResponse) string {
+	return request.host
+}
+
+func (n netHttpClientAttrsGetter) GetNetworkPeerPort(request *netHttpRequest, response *netHttpResponse) int {
+	if request.url == nil {
+		return 0
+	}
+	port, err := strconv.Atoi(request.url.Port())
+	if err != nil {
+		return 0
+	}
+	return port
+}
+
+func (n netHttpClientAttrsGetter) GetUrlFull(request *netHttpRequest) string {
+	return request.url.String()
+}
+
+func (n netHttpClientAttrsGetter) GetServerAddress(request *netHttpRequest) string {
+	return request.host
+}
+
+func (n netHttpClientAttrsGetter) GetServerPort(request *netHttpRequest) int {
+	if request.url == nil {
+		return 0
+	}
+	port, err := strconv.Atoi(request.url.Port())
+	if err != nil {
+		return 0
+	}
+	return port
+}
+
+func BuildImrocHttpClientOtelInstrumenter() *instrumenter.PropagatingToDownstreamInstrumenter[*netHttpRequest, *netHttpResponse] {
+	builder := &instrumenter.Builder[*netHttpRequest, *netHttpResponse]{}
+	clientGetter := netHttpClientAttrsGetter{}
+	commonExtractor := http.HttpCommonAttrsExtractor[*netHttpRequest, *netHttpResponse, http.HttpClientAttrsGetter[*netHttpRequest, *netHttpResponse], net.NetworkAttrsGetter[*netHttpRequest, *netHttpResponse]]{HttpGetter: clientGetter, NetGetter: clientGetter}
+	networkExtractor := net.NetworkAttrsExtractor[*netHttpRequest, *netHttpResponse, net.NetworkAttrsGetter[*netHttpRequest, *netHttpResponse]]{Getter: clientGetter}
+	return builder.Init().SetSpanStatusExtractor(http.HttpClientSpanStatusExtractor[*netHttpRequest, *netHttpResponse]{Getter: clientGetter}).SetSpanNameExtractor(&http.HttpClientSpanNameExtractor[*netHttpRequest, *netHttpResponse]{Getter: clientGetter}).
+		SetSpanKindExtractor(&instrumenter.AlwaysClientExtractor[*netHttpRequest]{}).
+		AddOperationListeners(http.HttpClientMetrics("net.http.client")).
+		SetInstrumentationScope(instrumentation.Scope{
+			Name:    utils.NET_HTTP_CLIENT_SCOPE_NAME,
+			Version: version.Tag,
+		}).
+		AddAttributesExtractor(&http.HttpClientAttrsExtractor[*netHttpRequest, *netHttpResponse, http.HttpClientAttrsGetter[*netHttpRequest, *netHttpResponse], net.NetworkAttrsGetter[*netHttpRequest, *netHttpResponse]]{Base: commonExtractor, NetworkExtractor: networkExtractor}).BuildPropagatingToDownstreamInstrumenter(func(n *netHttpRequest) propagation.TextMapCarrier {
+		if n.header == nil {
+			return nil
+		}
+		return propagation.HeaderCarrier(n.header)
+	}, otel.GetTextMapPropagator())
+}
